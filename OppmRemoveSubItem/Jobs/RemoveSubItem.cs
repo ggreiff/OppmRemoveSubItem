@@ -73,6 +73,50 @@ namespace OppmRemoveSubItem.Jobs
 
                 var j = 1;
                 var categoryList = new List<String> { serialCategory };
+
+                var subItemDictionary = new Dictionary<String, List<Int32>>();
+                foreach (DataRow row in xlsxDataTable.Rows)
+                {
+                    var itemName = row.Field<String>(0);
+                    var subItemId = row.Field<String>(1).ToInt();
+                    if (!subItemId.HasValue) continue;
+                    NLogger.Trace("{0}\tProcessing {1} subItem {2}",j++, itemName, subItemId);
+                    if (!subItemDictionary.ContainsKey(itemName))
+                    {
+                        subItemDictionary.Add(itemName, new List<Int32>());
+                    }
+                    subItemDictionary[itemName].Add(subItemId.Value);
+                }
+
+                foreach (var keyItemName in subItemDictionary.Keys)
+                {
+                    var portfolioId = oppm.SePorfolio.GetPortfolioIdByName(keyItemName).ToInt();
+                    if (!portfolioId.HasValue)
+                    {
+                        NLogger.Warn("Unable to find {0}", keyItemName);
+                        continue;
+                    }
+
+                    var i = 1;
+                    var subItemListAsOfToday = oppm.SeSubItem.GetSubItemListAsOfToday( portfolioId.Value, String.Empty, valueList.ID, categoryList, false);
+                    var newSubItemList = new List<wsPortfoliosSubItem.psPortfoliosSubItemInfo>();
+                    foreach (var psPortfoliosSubItemInfo in subItemListAsOfToday)
+                    {
+                        if (subItemDictionary[keyItemName].Contains(psPortfoliosSubItemInfo.SubItemProSightID )) continue;
+                        psPortfoliosSubItemInfo.SubItemSerial = i;
+                        foreach (var psPortfoliosCellInfo in psPortfoliosSubItemInfo.CategoryValues)
+                        {
+                            if (psPortfoliosCellInfo.CategoryName.IsNotEqualTo(serialCategory, true)) continue;
+                            psPortfoliosCellInfo.CellValue = i.ToString();
+                        }
+                        newSubItemList.Add(psPortfoliosSubItemInfo);
+                        i++;
+                    }
+                    var subItemUpdateStatuses = oppm.SeSubItem.SyncSubItemsAsOfToday(portfolioId.Value, valueList.ID, newSubItemList, false);
+                    NLogger.Trace("Updated subItems on {0} with {1} errors", keyItemName,  subItemUpdateStatuses.Count);
+                }
+
+                /*
                 foreach (DataRow row in xlsxDataTable.Rows)
                 {
                     var itemName = row.Field<String>(0);
@@ -104,7 +148,9 @@ namespace OppmRemoveSubItem.Jobs
 
                     var subItemUpdateStatuses = oppm.SeSubItem.SyncSubItemsAsOfToday(portfolioId.Value, valueList.ID, newSubItemList, false);
                     NLogger.Trace("Updated subItems on {0} with {1} errors", itemName,  subItemUpdateStatuses.Count);
+                    
                 }
+                */
                 retVal = true;
             }
             catch (Exception ex)
